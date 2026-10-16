@@ -4,25 +4,16 @@ Truck routing for a semi using only free OpenStreetMap-based services and offici
 
 ## Run
 ```bash
-cd /workspace/truck-router
 npm install
-npm run dev          # proxy on 127.0.0.1:8787 + Vite on http://localhost:5173
-npm test             # unit tests: fuel optimizer, HOS, unit conversions, polyline, corridor filter
-npm run build        # production build to dist/
-node test/live.mjs   # LIVE test against public services (dev server must be running)
+npm run dev        # snapshots road-work feeds, then Vite at http://localhost:5173/truck-router/
+npm test
+npm run build      # static site in dist/ (base /truck-router/), ready for GitHub Pages
+node test/live.mjs # live test (needs dev/preview server for the road-work snapshots)
 ```
 
-## Services (all free, no key)
-| Feature | Source |
-|---|---|
-| Truck routing + maneuvers, toll/ferry flags | Valhalla `costing=truck`, public FOSSGIS server `https://valhalla1.openstreetmap.de/route`. `costing_options.truck`: `height`/`width`/`length` (m), `weight`/`axle_load` (metric t), `axle_count`, `hazmat`, `use_tolls` (0 + `exclude_tolls` when avoiding) |
-| Car-vs-truck comparison | Same server, `costing=auto` (a 2nd request) |
-| Geocoding | Nominatim, US/CA only, ≤1 request/s, cached 24 h |
-| Fuel / truck stops / rest areas / truck parking | Overpass API, **one** query per route (union of ~8 bboxes), filtered to ≤3 mi of the polyline, cached 1 h |
-| Road work | WZDx feeds with `needapikey=false` in the USDOT WZDx registry: Iowa DOT, MnDOT, WisDOT 511 (cached 10 min, filtered to ≤0.5 mi of route). Illinois feeds need a key → the UI says “check gettingaroundillinois.com”. |
-| Map | OSM standard tiles with attribution |
-
-The proxy (`server.js`) sends a User-Agent, spaces requests (Nominatim 1.1 s, Valhalla 1.5 s, Overpass 2 s) and caches. You can override it with `TR_USER_AGENT`. Optional free override: `VALHALLA_URL` (for example a self-hosted Valhalla).
+## How it works (static, no server, no key)
+The browser calls Valhalla (FOSSGIS), Nominatim (with Photon as fallback, 1 request/s), Overpass and OSM tiles directly. All four send `Access-Control-Allow-Origin: *`. Browsers send their own User-Agent and Referer.
+The state WZDx feeds (Iowa DOT, MnDOT, WisDOT) don't allow CORS. `scripts/fetch-roadwork.mjs` saves them as static JSON in `roadwork/`, and the GitHub Actions workflow (`.github/workflows/pages.yml`) rebuilds and redeploys every 30 minutes. Road work can be up to about 30 minutes old (plus GitHub cron delay). Illinois has no free feed.
 
 ## Honest limits
 - **OpenStreetMap truck data is community-mapped and can miss low bridges and posted weight limits. Watch the signs.**
