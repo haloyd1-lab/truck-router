@@ -8,7 +8,7 @@ npm install
 npm run dev        # snapshots road-work feeds, then Vite at http://localhost:5173/truck-router/
 npm test
 npm run build      # static site in dist/ (base /truck-router/), ready for GitHub Pages
-node test/live.mjs # live test (needs dev/preview server for the road-work snapshots)
+node scripts/live-test.mjs # live test (needs dev/preview server for the road-work snapshots)
 ```
 
 ## How it works (static, no server, no key)

@@ -1,5 +1,7 @@
 import L from 'leaflet'; import 'leaflet/dist/leaflet.css';
 import { plan, findStops, roadWork, geocode } from './planner.js';
+import { startNav } from './navui.js';
+import { filterToCorridor } from './geo.js';
 import { fuelEstimate, optimizeFuelStops, hosPlan } from './fuel.js';
 const $ = id => document.getElementById(id); const BASE = import.meta.env.BASE_URL;
 const PRESETS = {
@@ -63,7 +65,9 @@ function render() {
   ev.forEach(e => L.circleMarker([e.lat, e.lng], { radius: 8, color: e.closed ? '#ff3b3b' : '#ffb347' }).bindPopup(`<b>${esc(e.kind)}</b> ${esc(e.road)}<br>${day(e.start)} – ${day(e.end)}<br>${esc(e.description).slice(0, 400)}`).addTo(layer));
   const tollLegs = d.legs.filter(l => l.has_toll), tollMan = d.maneuvers.filter(m => m.toll);
   const feedNotes = d.work ? Object.entries(d.work.feeds).map(([st, fd]) => fd.ok ? `<li class="ok">${st}: ${esc(fd.name)} — ${ev.filter(e => e.state === st).length} on route</li>` : `<li class="warn">${st}: ${esc(fd.note)}</li>`).join('') : '';
+  const simOn = new URLSearchParams(location.search).has('sim');
   $('out').innerHTML = `
+  <div class="navStart"><button id="navGo">▶ Start</button><button id="navSim" style="background:#555">${simOn ? '▶ Simulate' : 'Simulate'}</button></div>
   <div class="card"><b>${d.totalMi.toFixed(0)} mi</b> · <b>${hm(d.cumSec)}</b> drive (Valhalla estimate, no live traffic)<br>
    Tolls: ${tollLegs.length ? `<span class="warn">route uses toll roads on leg ${tollLegs.map(l => l.leg).join(', ')}</span> — toll amount not available in free mode` : 'no toll segments flagged'}<br>
    Ferry: ${d.legs.some(l => l.has_ferry) ? '<span class="warn">yes</span>' : 'no'} · Fuel: ${est.gallons.toFixed(0)} gal${f.price ? ` · $${est.cost.toFixed(2)} @ $${(+f.price).toFixed(2)}` : ' (enter $/gal for cost)'}</div>
@@ -81,6 +85,26 @@ function render() {
   <div class="card"><b>Turn list</b><ol>${d.maneuvers.map(m => {
     const w = ev.filter(e => Math.abs(e.mile - m.mile) < 2);
     return `<li>${esc(m.instruction)} <small>· mi ${m.mile?.toFixed(0) ?? '?'}${m.lengthMi ? ` · then ${m.lengthMi.toFixed(1)} mi` : ''}</small>${m.toll ? ' <span class="warn">💲 toll</span>' : ''}${m.ferry ? ' <span class="warn">⛴ ferry</span>' : ''}${w.map(e => ` <span class="${e.closed ? 'crit' : 'warn'}">⚠ ${esc(e.kind)}</span>`).join('')}</li>`; }).join('')}</ol></div>`;
+  $('navGo').onclick = () => startNav(navCtx, { sim: false });
+  $('navSim').onclick = () => startNav(navCtx, { sim: true });
   document.querySelectorAll('[data-stop]').forEach(i => i.onchange = () => { const v = parseFloat(i.value);
     if (v > 0) state.prices[i.dataset.stop] = v; else delete state.prices[i.dataset.stop]; localStorage.prices = JSON.stringify(state.prices); render(); });
 }
+
+// ---------- Navigate mode glue ----------
+const navCtx = {
+  map, data: () => state.last,
+  moving: on => document.body.classList.toggle('moving', !!on),
+  exit: () => render(),
+  async reroute(lat, lng) { // from current position to remaining stops, same truck profile
+    const d = state.last; const s = filterToCorridor(d.route, [{ lat, lng }], 1e9)[0];
+    const remaining = d.places.slice(1).filter((p, i) => (d.legs[i]?.endMi ?? Infinity) > (s?.cumMi ?? 0) + 0.2);
+    const places = [{ lat, lon: lng }, ...(remaining.length ? remaining : [d.places.at(-1)])];
+    const r = await plan(BASE, { places, profile: getProfile(), avoidTolls: $('avoidTolls').checked });
+    const stops = filterToCorridor(r.route, d.stops.map(({ lat, lng, ...x }) => ({ ...x, lat, lng })), 3);
+    const events = d.work ? filterToCorridor(r.route, d.work.events.map(e => ({ ...e })), 0.5) : [];
+    layer.clearLayers(); L.polyline(r.route.map(p => [p.lat, p.lng]), { color: '#2f9cff', weight: 6 }).addTo(layer);
+    state.last = { ...d, ...r, places, stops, work: d.work ? { ...d.work, events } : null };
+  },
+};
+if (new URLSearchParams(location.search).has('sim')) document.title += ' (sim)';

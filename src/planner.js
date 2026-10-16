@@ -40,9 +40,10 @@ export async function plan(base, { places, profile, avoidTolls, departISO }) {
   for (const [li, leg] of trip.legs.entries()) {
     const pts = cumulate(decodePolyline6(leg.shape)); const legMi = pts.at(-1).cumMi || 1, base0 = route.length;
     pts.forEach(q => route.push({ ...q, cumMi: q.cumMi + mi0, cumSec: cumSec + leg.summary.time * q.cumMi / legMi }));
-    legs.push({ leg: li + 1, miles: leg.summary.length, sec: leg.summary.time, has_toll: leg.summary.has_toll, has_ferry: leg.summary.has_ferry,
+    legs.push({ endMi: route.at(-1).cumMi, leg: li + 1, miles: leg.summary.length, sec: leg.summary.time, has_toll: leg.summary.has_toll, has_ferry: leg.summary.has_ferry,
       has_highway: leg.summary.has_highway, has_time_restrictions: leg.summary.has_time_restrictions });
-    for (const m of leg.maneuvers) maneuvers.push({ instruction: m.instruction, mile: route[base0 + m.begin_shape_index]?.cumMi, lengthMi: m.length,
+    for (const m of leg.maneuvers) maneuvers.push({ instruction: m.instruction, mile: route[base0 + m.begin_shape_index]?.cumMi, lengthMi: m.length, idx: base0 + m.begin_shape_index, type: m.type, leg: li,
+      alert: m.verbal_transition_alert_instruction, pre: m.verbal_pre_transition_instruction, post: m.verbal_post_transition_instruction, sec: m.time,
       toll: !!m.toll, ferry: !!m.ferry, streets: m.street_names || [] });
     cumSec += leg.summary.time; mi0 = route.at(-1).cumMi;
   }
