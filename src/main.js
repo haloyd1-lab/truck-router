@@ -1,4 +1,7 @@
 import L from 'leaflet'; import 'leaflet/dist/leaflet.css';
+import iconUrl from 'leaflet/dist/images/marker-icon.png'; import iconRetinaUrl from 'leaflet/dist/images/marker-icon-2x.png'; import shadowUrl from 'leaflet/dist/images/marker-shadow.png';
+delete L.Icon.Default.prototype._getIconUrl; L.Icon.Default.mergeOptions({ iconUrl, iconRetinaUrl, shadowUrl }); // bundle default icons via Vite
+export const BUILD = '2026-10-16-mobile1';
 import { plan, findStops, roadWork, geocode } from './planner.js';
 import { startNav } from './navui.js';
 import { filterToCorridor } from './geo.js';
@@ -29,6 +32,16 @@ $('depart').value = new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).
 const map = L.map('map').setView([42.96, -91.81], 8);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · routing © Valhalla/FOSSGIS' }).addTo(map);
 const layer = L.layerGroup().addTo(map);
+const fixSize = () => setTimeout(() => map.invalidateSize(), 150);
+addEventListener('resize', fixSize); addEventListener('orientationchange', fixSize); addEventListener('load', fixSize); fixSize();
+// mobile bottom action bar (Start / Simulate) shown once a route exists
+const bar = document.createElement('div'); bar.id = 'actionBar'; bar.hidden = true;
+bar.innerHTML = '<button id="barGo">▶ Start</button><button id="barSim">🚚 Simulate</button><button id="barForm">☰ Trip</button>';
+document.body.append(bar);
+bar.querySelector('#barGo').onclick = () => startNav(navCtx, { sim: false });
+bar.querySelector('#barSim').onclick = () => startNav(navCtx, { sim: true });
+bar.querySelector('#barForm').onclick = () => { document.querySelectorAll('#panel details').forEach(x => x.open = true); $('panel').scrollIntoView({ behavior: 'smooth' }); };
+const isMobile = () => matchMedia('(max-width: 800px)').matches;
 const status = t => $('out').innerHTML = `<div class="card">${t}</div>`;
 
 $('plan').onclick = async () => {
@@ -40,6 +53,7 @@ $('plan').onclick = async () => {
     status('Routing truck (Valhalla, FOSSGIS public server)…');
     const r = await plan(BASE, { places, profile: getProfile(), avoidTolls: $('avoidTolls').checked, departISO: $('depart').value });
     state.last = { ...r, places, stops: [], work: null }; render();
+    bar.hidden = false; if (isMobile()) { document.querySelectorAll('#panel details').forEach(x => x.open = false); scrollTo({ top: 0, behavior: 'smooth' }); } fixSize();
     status2('Finding fuel / truck stops (Overpass)…');
     try { state.last.stops = (await findStops(BASE, r.route)).stops; } catch (e) { state.last.stopErr = e.message; }
     try { state.last.work = await roadWork(BASE, r.route); } catch (e) { state.last.workErr = e.message; }
@@ -95,7 +109,7 @@ function render() {
 const navCtx = {
   map, data: () => state.last,
   moving: on => document.body.classList.toggle('moving', !!on),
-  exit: () => render(),
+  exit: () => { render(); bar.hidden = false; fixSize(); },
   async reroute(lat, lng) { // from current position to remaining stops, same truck profile
     const d = state.last; const s = filterToCorridor(d.route, [{ lat, lng }], 1e9)[0];
     const remaining = d.places.slice(1).filter((p, i) => (d.legs[i]?.endMi ?? Infinity) > (s?.cumMi ?? 0) + 0.2);

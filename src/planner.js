@@ -13,7 +13,7 @@ export const BRANDS = /pilot|flying j|love'?s|kwik (trip|star)|casey|travel ?cen
 const STATES = { IA: [40.37, -96.64, 43.51, -90.14], MN: [43.49, -97.24, 49.39, -89.49], WI: [42.49, -92.89, 47.31, -86.25],
   IL: [36.97, -91.52, 42.51, -87.02], NE: [39.99, -104.06, 43.0, -95.31], SD: [42.48, -104.06, 45.95, -96.44], MO: [35.99, -95.77, 40.61, -89.1] };
 async function j(label, url, opt = {}) { let r;
-  try { r = await fetch(url, { ...opt, headers: { ...UA, ...(opt.headers || {}) } }); } catch (e) { throw new Error(`${label}: network/CORS error (${e.message}). The public server may be down.`); }
+  try { r = await fetch(url, { ...opt, headers: { ...UA, ...(opt.headers || {}) } }); } catch (e) { const err = new Error(`${label}: network/CORS error (${e.message}). The public server may be busy or down.`); throw err; }
   let b; try { b = await r.json(); } catch { b = {}; }
   if (!r.ok) { const e = new Error(`${label} → HTTP ${r.status}${r.status === 429 ? ' (rate limited — wait a minute)' : ''}: ${b.error || b.error_message || b.remark || ''}`.trim()); e.status = r.status; throw e; } return b; }
 export async function geocode(base, q) {
@@ -69,7 +69,8 @@ export async function findStops(base, route) {
   const query = `[out:json][timeout:60];(${parts.join('')});out center tags;`;
   let r;
   for (let a = 0; a < 3; a++) { try { r = await j('Overpass', OVERPASS, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(query) }); break; }
-    catch (e) { if (a === 2 || ![429, 502, 503, 504].includes(e.status)) throw e; await pause(4000 * (a + 1)); } }
+    catch (e) { // busy Overpass replies (429/504) often lack CORS headers -> show up as network errors; retry those too
+      if (a === 2 || (e.status && ![429, 502, 503, 504].includes(e.status))) throw e; await pause(4000 * (a + 1)); } }
   const seen = new Map();
   for (const e of r.elements || []) { const lat = e.lat ?? e.center?.lat, lng = e.lon ?? e.center?.lon; if (lat == null) continue; const t = e.tags || {};
     const kind = t.amenity === 'fuel' ? 'fuel' : t.highway === 'rest_area' ? 'rest' : 'parking';

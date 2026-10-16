@@ -19,7 +19,7 @@ export function startNav(ctx, { sim = false } = {}) {
     <div id="navBar"><div><b id="navEta">—</b><small>ETA</small></div><div><b id="navLeft">—</b><small>mi left</small></div><div><b id="navSpd">—</b><small>mph</small></div></div>
     <div id="navBtns"><button id="nbMute">${muted ? '🔇' : '🔊'}</button><button id="nbNight">${night ? '☀️' : '🌙'}</button><button id="nbCenter">🎯</button>
       ${sim ? '<button id="nbFast">⏩ x4</button><button id="nbOff">↪ Off-route</button>' : ''}<button id="nbExit">✕ End</button></div>`;
-  document.body.append(ov); map.invalidateSize();
+  document.body.append(ov); document.getElementById('actionBar')?.setAttribute('hidden', ''); map.invalidateSize(); setTimeout(() => map.invalidateSize(), 200);
   const $ = id => ov.querySelector('#' + id);
   const icon = () => L.divIcon({ className: 'navMe', html: `<div style="transform:rotate(${heading}deg)">▲</div>`, iconSize: [44, 44], iconAnchor: [22, 22] });
   const me = L.marker([d.route[0].lat, d.route[0].lng], { icon: icon(), zIndexOffset: 1000 }).addTo(map);
@@ -74,7 +74,7 @@ export function startNav(ctx, { sim = false } = {}) {
       simMi = Math.min(r.at(-1).cumMi, simMi + mph / 3600 * simX);
       const q = along(r, simMi); let lat = q.lat, lng = q.lng;
       if (simOff) { const rad = (q.heading + 90) * Math.PI / 180; lat += simOff * Math.cos(rad) / 110540; lng += simOff * Math.sin(rad) / (111320 * Math.cos(lat * Math.PI / 180)); }
-      onFix({ lat, lng, accuracy: 8, speed: mph / 2.23694 * simX, head: q.heading });
+      onFix({ lat, lng, accuracy: 8, speed: mph / 2.23694, head: q.heading });
       if (simMi >= r.at(-1).cumMi) clearInterval(simTimer); }, 1000); }
   else if (!navigator.geolocation) { $('navStreet').textContent = 'This browser has no GPS access.'; }
   else watchId = navigator.geolocation.watchPosition(
