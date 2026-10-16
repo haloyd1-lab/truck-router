@@ -1,0 +1,14 @@
+{
+  "name": "truck-router",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "roadwork": "node scripts/fetch-roadwork.mjs",
+    "dev": "node scripts/fetch-roadwork.mjs; vite --host 0.0.0.0 --port 5173",
+    "build": "node scripts/fetch-roadwork.mjs; vite build",
+    "preview": "vite preview --port 4173",
+    "test": "node --test test/"
+  },
+  "dependencies": { "leaflet": "^1.9.4" },
+  "devDependencies": { "vite": "^5.4.0" }
+}

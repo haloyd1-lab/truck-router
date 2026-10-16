@@ -1,0 +1,44 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Truck Router (free OSM mode)</title><link rel="stylesheet" href="/src/style.css"></head>
+<body><div id="app">
+<aside id="panel">
+  <h1>🚛 Truck Router</h1>
+  
+  <div class="card warn"><b>OpenStreetMap truck data is community-mapped and can miss low bridges and posted weight limits. Watch the signs.</b></div>
+  <details open><summary>Truck profile</summary>
+    <div class="row"><button id="presetSemi" type="button">Semi 80k / 53'</button><button id="presetBob" type="button">Power-only / bobtail</button></div>
+    <div class="grid">
+      <label>Gross weight (lb)<input id="gvw" type="number"></label>
+      <label>Max per axle (lb)<input id="axleWt" type="number"></label>
+      <label>Height ft<input id="hFt" type="number"></label><label>in<input id="hIn" type="number"></label>
+      <label>Width ft<input id="wFt" type="number"></label><label>in<input id="wIn" type="number"></label>
+      <label>Overall length (ft)<input id="lenFt" type="number"></label>
+      <label>Trailer length (ft)<input id="trlFt" type="number"></label>
+      <label>Axles<input id="axles" type="number"></label>
+      <label>Trailers<input id="trailers" type="number"></label>
+    </div>
+    <label><input type="checkbox" id="hazmat"> Hauling hazmat (placarded)</label>
+  </details>
+  <details open><summary>Trip</summary>
+    <label>Origin<input id="origin" value="West Union, IA"></label>
+    <div id="stops"></div><button id="addStop" type="button">+ Add stop</button>
+    <label>Destination<input id="dest" value="East Moline, IL"></label>
+    <label>Departure<input id="depart" type="datetime-local"></label>
+    <label><input type="checkbox" id="avoidTolls"> Avoid toll roads</label>
+  </details>
+  <details open><summary>Fuel &amp; hours</summary>
+    <div class="grid">
+      <label>MPG<input id="mpg" type="number" step="0.1"></label>
+      <label>Tank gal (total)<input id="tank" type="number"></label>
+      <label>Current fuel %<input id="curPct" type="number"></label>
+      <label>Reserve %<input id="resPct" type="number"></label>
+      <label>Diesel $/gal (you enter)<input id="price" type="number" step="0.01"></label>
+      <label><input type="checkbox" id="hos"> HOS break planning</label>
+      <label><input type="checkbox" id="allFuel"> Include all fuel stations (not just truck stops)</label>
+    </div>
+  </details>
+  <button id="plan" class="big">Plan route</button>
+  <div id="out"></div>
+</aside>
+<main id="map"></main>
+</div><script type="module" src="/src/main.js"></script></body></html>
