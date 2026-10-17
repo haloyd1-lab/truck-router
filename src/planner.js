@@ -8,6 +8,8 @@ let lastGeo = 0; const geoCache = new Map();
 const pause = ms => new Promise(r => setTimeout(r, ms));
 import { decodePolyline6, cumulate, filterToCorridor, chunkBoxes, MI_PER_KM } from './geo.js';
 import { truckCosting } from './units.js';
+import { bearing } from './nav.js';
+import { buildScales } from './scales.js';
 export const BRANDS = /pilot|flying j|love'?s|kwik (trip|star)|casey|travel ?centers|\bta\b|petro|bosselman|road ranger|sapp bros|speedway|cenex|kum ?& ?go/i;
 // rough state bounding boxes [s,w,n,e] to decide which road-work feeds to query
 const STATES = { IA: [40.37, -96.64, 43.51, -90.14], MN: [43.49, -97.24, 49.39, -89.49], WI: [42.49, -92.89, 47.31, -86.25],
@@ -65,19 +67,25 @@ export async function plan(base, { places, profile, avoidTolls, departISO }) {
 export async function findStops(base, route) {
   const total = route.at(-1).cumMi; const boxes = chunkBoxes(route, Math.max(40, total / 8), 3.5);
   const q = (t, f, b) => `${t}${f}(${b.join(',')});`;
-  const parts = boxes.flatMap(b => ['node', 'way'].flatMap(t => [q(t, '["amenity"="fuel"]', b), q(t, '["highway"="rest_area"]', b), q(t, '["amenity"="parking"]["hgv"~"yes|designated"]', b)]));
-  const query = `[out:json][timeout:60];(${parts.join('')});out center tags;`;
+  const parts = boxes.flatMap(b => ['node', 'way'].flatMap(t => [q(t, '["amenity"="fuel"]', b), q(t, '["highway"="rest_area"]', b), q(t, '["amenity"="parking"]["hgv"~"yes|designated"]', b),
+    q(t, '["amenity"="weighbridge"]', b), q(t, '["highway"="weigh_station"]', b), q(t, '["service"="weigh_station"]', b), q(t, '["name"~"[Ww]eigh [Ss]tation|Port of Entry"]', b)]));
+  const query = `[out:json][timeout:60];(${parts.join('')});out tags geom;`;
   let r;
   for (let a = 0; a < 3; a++) { try { r = await j('Overpass', OVERPASS, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'data=' + encodeURIComponent(query) }); break; }
     catch (e) { // busy Overpass replies (429/504) often lack CORS headers -> show up as network errors; retry those too
       if (a === 2 || (e.status && ![429, 502, 503, 504].includes(e.status))) throw e; await pause(4000 * (a + 1)); } }
   const seen = new Map();
-  for (const e of r.elements || []) { const lat = e.lat ?? e.center?.lat, lng = e.lon ?? e.center?.lon; if (lat == null) continue; const t = e.tags || {};
+  const scalesRaw = [];
+  for (const e of r.elements || []) { const g = e.geometry; const lat = e.lat ?? (g ? g.reduce((a, p) => a + p.lat, 0) / g.length : null), lng = e.lon ?? (g ? g.reduce((a, p) => a + p.lon, 0) / g.length : null);
+    if (lat == null) continue; const t = e.tags || {};
+    if (t.amenity === 'weighbridge' || t.highway === 'weigh_station' || t.service === 'weigh_station' || /weigh station|port of entry/i.test(t.name || '')) {
+      const wayBearing = g && g.length > 1 && t.oneway === 'yes' ? bearing({ lat: g[0].lat, lng: g[0].lon }, { lat: g.at(-1).lat, lng: g.at(-1).lon }) : null;
+      scalesRaw.push({ id: e.type[0] + e.id, lat, lng, tags: t, wayBearing }); if (t.amenity !== 'fuel') continue; }
     const kind = t.amenity === 'fuel' ? 'fuel' : t.highway === 'rest_area' ? 'rest' : 'parking';
     const name = t.name || t.brand || (kind === 'rest' ? 'Rest area' : kind === 'parking' ? 'Truck parking' : 'Fuel station');
     const truck = kind === 'fuel' && (t.hgv === 'yes' || t.hgv === 'designated' || t.truck_stop === 'yes' || t['fuel:HGV_diesel'] === 'yes' || BRANDS.test(name + ' ' + (t.brand || '')));
     seen.set(e.type + e.id, { id: e.type[0] + e.id, name, brand: t.brand, kind, truck, lat, lng }); }
-  return { stops: filterToCorridor(route, [...seen.values()], 3), queries: 1, boxes: boxes.length };
+  return { stops: filterToCorridor(route, [...seen.values()], 3), scalesRaw, queries: 1, boxes: boxes.length };
 }
 
 const FEED_STATES = ['IA', 'MN', 'WI'];
@@ -113,4 +121,17 @@ export async function roadWork(base, route) {
       start: it.start_date, end: it.end_date, restrictions: it.restrictions }); }
   hits.sort((a, b) => a.mile - b.mile);
   return { events: hits, feeds: r.feeds, states: touched };
+}
+
+const SCALE_STATES = ['IA', 'WI'];
+export const SCALE_NOTES = { MN: 'MN: no free weigh-station location/status feed found (MnDOT only publishes weigh-in-motion sensors) — OSM only',
+  IL: 'IL: no free weigh-station feed checked — OSM only', IA: 'IA: Iowa DOT Weigh Scale locations + direction (no live open/closed)',
+  WI: 'WI: WisDOT SWEF locations + facility status text (not live open/closed)' };
+export async function weighStations(base, route, scalesRaw, stops) {
+  const states = new Set(); for (const [st, [s, w, n, e]] of Object.entries(STATES)) if (route.some((p, i) => i % 20 === 0 && p.lat >= s && p.lat <= n && p.lng >= w && p.lng <= e)) states.add(st);
+  const official = []; const notes = [];
+  for (const st of states) { notes.push(SCALE_NOTES[st] || `${st}: OSM only`); if (!SCALE_STATES.includes(st)) continue;
+    try { const d = await j(`${st} scales`, `${base}scales/${st}.json`); official.push(...d.items); } catch (e) { notes.push(`${st} official scales failed: ${e.message}`); } }
+  const r = buildScales(route, { osm: scalesRaw, official, truckStops: stops.filter(s => s.kind === 'fuel' && s.truck) });
+  return { ...r, notes, states: [...states] };
 }

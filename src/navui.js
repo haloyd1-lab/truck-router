@@ -1,5 +1,6 @@
 // Navigate mode UI: GPS follow, snapping, voice, off-route reroute, wake lock, simulation.
 import L from 'leaflet';
+import { scalePrompt } from './scales.js';
 import { snap, OffRouteDetector, maneuverProgress, promptFor, promptText, Throttle, along, ARROWS, bearing } from './nav.js';
 const esc = s => String(s ?? '').replace(/[<>&"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c]));
 const fmtDist = mi => mi >= 0.2 ? `${mi.toFixed(mi < 10 ? 1 : 0)} mi` : `${Math.max(0, Math.round(mi * 5280 / 50) * 50)} ft`;
@@ -61,6 +62,10 @@ export function startNav(ctx, { sim = false } = {}) {
     if (p.arrived && !spoken.has('arr')) { spoken.set('arr', 1); say('You have arrived.'); }
     const ahead = [...(d.work?.events || []).filter(e => e.mile > s.cumMi && e.mile - s.cumMi <= 10).map(e => `<div class="${e.closed ? 'crit' : 'warn'}">⚠ ${(e.mile - s.cumMi).toFixed(1)} mi · ${esc(e.kind)} ${esc(e.road)}</div>`),
       ...d.stops.filter(x => x.kind === 'fuel' && x.truck && x.cumMi > s.cumMi && x.cumMi - s.cumMi <= 10).slice(0, 3).map(x => `<div>⛽ ${(x.cumMi - s.cumMi).toFixed(1)} mi · ${esc(x.name)}</div>`)];
+    if (ctx.scalesOn?.() && d.scales) for (const st of d.scales.stations) { const dm = st.cumMi - s.cumMi; if (dm < -0.1 || dm > 10) continue;
+      ahead.unshift(`<div class="scaleBanner">⚖ Weigh station ${dm.toFixed(1)} mi · ${esc(st.name)} · ${st.side} · ${esc(st.label)}<br><small>Status unknown — watch the signs / PrePass / Drivewyze</small></div>`);
+      const key = 'ws' + st.lat.toFixed(4) + st.lng.toFixed(4); const done = spoken.get(key) || new Set(); spoken.set(key, done);
+      for (const [lvl, hi, lo] of [['2', 2.05, 1.5], ['1', 1.05, 0.6]]) if (dm <= hi && dm >= lo && !done.has(lvl)) { done.add(lvl); if (lvl === '1') done.add('2'); say(scalePrompt(st, dm)); } }
     $('navAhead').innerHTML = ahead.slice(0, 5).join('');
   }
   async function reroute(lat, lng) { rerouting = true; say('Recalculating.'); $('navStreet').textContent = 'Recalculating…';

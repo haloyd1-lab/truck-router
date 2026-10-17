@@ -32,3 +32,5 @@ body.navigating #panel{display:none}body.navigating #map{position:fixed;inset:0;
 .navMe div{font-size:36px;color:#2f9cff;text-shadow:0 0 4px #000;width:44px;height:44px;text-align:center;line-height:44px}
 .navStart{display:flex;gap:8px}.navStart button{flex:1;min-height:60px;font-size:20px}
 body.moving #panel input,body.moving #panel select{pointer-events:none;opacity:.5}
+.scaleIcon{font-size:20px;line-height:30px;text-align:center;border-radius:50%;border:2px solid #fff}.scaleIcon.st{background:#c0392b}.scaleIcon.pub{background:#2471a3}
+.scaleBanner{background:#8e1b1b!important;font-size:18px;font-weight:700}

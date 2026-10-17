@@ -15,3 +15,19 @@ for (const [st, [feed, url]] of Object.entries(FEEDS)) {
     console.log(st, features.length);
   } catch (e) { console.error(st, 'FAILED', e.message); if (!fs.existsSync(new URL(`${st}.json`, out))) fs.writeFileSync(new URL(`${st}.json`, out), JSON.stringify({ feed, source: url, fetched: null, error: e.message, features: [] })); }
 }
+
+// Official weigh-station locations (free, no key). Iowa DOT Weigh Scale (direction, no live status); WisDOT SWEFs (facility status text, not live).
+const SCALES = {
+  IA: ['Iowa DOT Weigh Scale', 'https://services.arcgis.com/8lRhdTsQyJpO52F1/arcgis/rest/services/Weigh_Scale_View/FeatureServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson',
+    p => ({ name: `Iowa DOT scale – ${p.REST_AREAS || p.NEAREST_CITY}`, road: p.ROUTE, milepost: p.MILEPOST, direction: p.TRAVEL_DIRECTION, address: p.ADDRESS })],
+  WI: ['WisDOT SWEF', 'https://dotmaps.wi.gov/arcgis/rest/services/agohub/SAFETY_WEIGHT_ENFORCEMENT_FACILITIES/MapServer/0/query?where=1%3D1&outFields=*&outSR=4326&f=geojson',
+    p => ({ name: p.PROPERTY_NAME, road: p.HIGHWAY, direction: p.SERVICE_DIRECTION, facilityStatus: p.STATUS })],
+};
+const sOut = new URL('../public/scales/', import.meta.url); fs.mkdirSync(sOut, { recursive: true });
+for (const [st, [source, url, map]] of Object.entries(SCALES)) {
+  try { const r = await fetch(url, { headers: { 'User-Agent': 'TruckRouter/0.4 (github.com/haloyd1-lab/truck-router)' } }); if (!r.ok) throw new Error('HTTP ' + r.status);
+    const fc = await r.json(); const items = (fc.features || []).filter(f => f.geometry?.coordinates?.[0] != null)
+      .map(f => ({ lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0], source, ...map(f.properties || {}) }));
+    fs.writeFileSync(new URL(`${st}.json`, sOut), JSON.stringify({ source, url, fetched: new Date().toISOString(), items })); console.log('scales', st, items.length);
+  } catch (e) { console.error('scales', st, 'FAILED', e.message); if (!fs.existsSync(new URL(`${st}.json`, sOut))) fs.writeFileSync(new URL(`${st}.json`, sOut), JSON.stringify({ source, fetched: null, error: e.message, items: [] })); }
+}
